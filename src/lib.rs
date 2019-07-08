@@ -19,7 +19,7 @@ use window::{
     WindowSettings,
     Size,
 };
-use input::{Input, TimeStamp};
+use input::{Input, Event};
 
 /// Wraps a window to simulate Hi-DPI screen.
 pub struct FakeDpiWindow<W> {
@@ -58,15 +58,14 @@ impl<W: Window> Window for FakeDpiWindow<W> {
         Size {width: size.width / self.dpi, height: size.height / self.dpi}
     }
     fn swap_buffers(&mut self) {self.inner.swap_buffers()}
-    fn wait_event(&mut self) -> (Input, Option<TimeStamp>) {
-        let (e, t) = self.inner.wait_event();
-        (map_input(self.dpi, e), t)
+    fn wait_event(&mut self) -> Event {
+        map_input(self.dpi, self.inner.wait_event())
     }
-    fn wait_event_timeout(&mut self, val: Duration) -> Option<(Input, Option<TimeStamp>)> {
-        self.inner.wait_event_timeout(val).map(|(e, t)| (map_input(self.dpi, e), t))
+    fn wait_event_timeout(&mut self, val: Duration) -> Option<Event> {
+        self.inner.wait_event_timeout(val).map(|e| map_input(self.dpi, e))
     }
-    fn poll_event(&mut self) -> Option<(Input, Option<TimeStamp>)> {
-        self.inner.poll_event().map(|(e, t)| (map_input(self.dpi, e), t))
+    fn poll_event(&mut self) -> Option<Event> {
+        self.inner.poll_event().map(|e| map_input(self.dpi, e))
     }
     fn draw_size(&self) -> Size {self.inner.draw_size()}
 }
@@ -86,20 +85,24 @@ impl<W: AdvancedWindow> AdvancedWindow for FakeDpiWindow<W> {
     fn set_size<S: Into<Size>>(&mut self, val: S) {self.inner.set_size(val)}
 }
 
-fn map_input(dpi: f64, e: Input) -> Input {
+fn map_input(dpi: f64, e: Event) -> Event {
     use Input::*;
     use input::Motion::*;
     use input::ResizeArgs;
 
-    match e {
-        Focus(_) | Cursor(_) | Move(Touch(_)) | Move(ControllerAxis(_)) | Button(_) | Text(_) | FileDrag(_) | Close(_) => e,
-        Move(MouseCursor(pos)) => Move(MouseCursor([pos[0] / dpi, pos[1] / dpi])),
-        Move(MouseRelative(pos)) => Move(MouseRelative([pos[0] / dpi, pos[1] / dpi])),
-        Move(MouseScroll(pos)) => Move(MouseScroll([pos[0] / dpi, pos[1] / dpi])),
-        Resize(args) => Resize(ResizeArgs {
-            draw_size: args.draw_size,
-            window_size: [args.window_size[0] / dpi, args.window_size[1] / dpi],
-        })
+    if let Event::Input(e, ts) = e {
+        Event::Input(match e {
+            Focus(_) | Cursor(_) | Move(Touch(_)) | Move(ControllerAxis(_)) | Button(_) | Text(_) | FileDrag(_) | Close(_) => e,
+            Move(MouseCursor(pos)) => Move(MouseCursor([pos[0] / dpi, pos[1] / dpi])),
+            Move(MouseRelative(pos)) => Move(MouseRelative([pos[0] / dpi, pos[1] / dpi])),
+            Move(MouseScroll(pos)) => Move(MouseScroll([pos[0] / dpi, pos[1] / dpi])),
+            Resize(args) => Resize(ResizeArgs {
+                draw_size: args.draw_size,
+                window_size: [args.window_size[0] / dpi, args.window_size[1] / dpi],
+            })
+        }, ts)
+    } else {
+        e
     }
 }
 
